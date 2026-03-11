@@ -91,8 +91,9 @@ export default function Home() {
       if ('wakeLock' in navigator) {
         wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
       }
-    } catch (err) {
-      console.error('Wake Lock error:', err);
+    } catch (err: any) {
+      // Suppress the error if the environment (e.g. iframe) doesn't allow Wake Lock
+      console.warn('Wake Lock could not be acquired:', err.message || err);
     }
   };
 
@@ -292,7 +293,7 @@ export default function Home() {
               
               <div className="text-sm text-zinc-500 flex items-center gap-2">
                 {isRecording ? (
-                  <><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> 録音中 (Wake Lock有効)</>
+                  <><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> 録音中</>
                 ) : (
                   '準備完了'
                 )}

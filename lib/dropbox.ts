@@ -6,7 +6,7 @@ export async function saveToDropbox(filename: string, content: string) {
     throw new Error('DROPBOX_ACCESS_TOKEN is not set in environment variables');
   }
 
-  const dbx = new Dropbox({ accessToken });
+  const dbx = new Dropbox({ accessToken, fetch: fetch });
   
   try {
     const response = await dbx.filesUpload({
