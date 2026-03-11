@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Mic, Square, Loader2, Save, Book, Plus, Trash2, AlertCircle, CheckCircle2, Cloud } from 'lucide-react';
+import { Mic, Square, Loader2, Save, Book, Plus, Trash2, AlertCircle, CheckCircle2, Cloud, Download, Upload } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
+import JSZip from 'jszip';
 
 export default function Home() {
   type DictionaryEntry = { word: string; context: string };
@@ -26,6 +27,7 @@ export default function Home() {
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const wakeLockRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const savedDict = localStorage.getItem('voice_dictionary');
@@ -215,56 +217,122 @@ export default function Home() {
     }
   };
 
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    setAudioBlob(file);
+    setTranscription('');
+    setTranscriptionError(null);
+    setSaveStatus(null);
+    setRecordingTime(0);
+    
+    transcribeAudio(file);
+    
+    // Reset input value so the same file can be uploaded again if needed
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const transcribeAudio = async (blob: Blob) => {
     setIsTranscribing(true);
-    try {
-      const reader = new FileReader();
-      reader.readAsDataURL(blob);
-      reader.onloadend = async () => {
-        try {
-          const base64data = (reader.result as string).split(',')[1];
-          
-          const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
-          
-          let systemInstruction = 'あなたはプロの文字起こしアシスタントです。提供された音声を正確に文字起こししてください。\n重要: 出力は文字起こししたテキストのみとし、挨拶や「文字起こししました」などの前置き、後書き、説明は一切含めないでください。';
-          if (dictionary.length > 0) {
-            const dictString = dictionary.map(d => d.context ? `${d.word} (${d.context})` : d.word).join(', ');
-            systemInstruction += `\n以下の固有名詞や専門用語のリストを参考に、文脈に合わせて正しく変換・修正してください：\n${dictString}`;
-          }
-
-          const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: [
-              {
-                inlineData: {
-                  data: base64data,
-                  mimeType: blob.type || 'audio/webm',
-                }
-              },
-              '音声の文字起こしのみを出力してください。'
-            ],
-            config: {
-              systemInstruction,
-            }
-          });
-
-          if (response.text && response.text.trim().length > 0) {
-            setTranscription(response.text.trim());
-          } else {
-            setTranscriptionError('音声から文字を検出できませんでした。');
-          }
-        } catch (error: any) {
-          console.error('Transcription error:', error);
-          setTranscriptionError(`文字起こしに失敗しました: ${error.message}`);
-        } finally {
-          setIsTranscribing(false);
-        }
-      };
-    } catch (error: any) {
-      console.error('Transcription error:', error);
-      setTranscriptionError(`文字起こしに失敗しました: ${error.message}`);
+    setTranscriptionError(null);
+    
+    // Check file size (Gemini inlineData limit is roughly 20MB)
+    if (blob.size > 20 * 1024 * 1024) {
+      setTranscriptionError('ファイルサイズが大きすぎます（20MB以下にしてください）。長い録音の場合は、分割してアップロードするか、録音時間を短くしてください。');
       setIsTranscribing(false);
+      return;
     }
+
+    const maxRetries = 2;
+    let retryCount = 0;
+
+    const performTranscription = async () => {
+      try {
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve, reject) => {
+          reader.onloadend = () => {
+            const result = reader.result as string;
+            if (result.includes(',')) {
+              resolve(result.split(',')[1]);
+            } else {
+              reject(new Error('Failed to parse file data'));
+            }
+          };
+          reader.onerror = () => reject(new Error('File reading failed'));
+          reader.readAsDataURL(blob);
+        });
+
+        const base64data = await base64Promise;
+        const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
+        
+        // Clean MIME type (remove codecs like ;codecs=opus which can cause 500 errors)
+        let mimeType = blob.type || 'audio/webm';
+        mimeType = mimeType.split(';')[0];
+        
+        // If it's a generic video/webm but we want audio, audio/webm is often safer for transcription
+        if (mimeType === 'video/webm') {
+          mimeType = 'audio/webm';
+        }
+
+        let systemInstruction = 'あなたはプロの文字起こしアシスタントです。提供された音声を正確に文字起こししてください。\n重要: 出力は文字起こししたテキストのみとし、挨拶や「文字起こししました」などの前置き、後書き、説明は一切含めないでください。';
+        if (dictionary.length > 0) {
+          const dictString = dictionary.map(d => d.context ? `${d.word} (${d.context})` : d.word).join(', ');
+          systemInstruction += `\n以下の固有名詞や専門用語のリストを参考に、文脈に合わせて正しく変換・修正してください：\n${dictString}`;
+        }
+
+        const response = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: [
+            {
+              inlineData: {
+                data: base64data,
+                mimeType: mimeType,
+              }
+            },
+            'この音声の内容を文字起こししてください。テキストのみを出力してください。'
+          ],
+          config: {
+            systemInstruction,
+          }
+        });
+
+        if (response.text && response.text.trim().length > 0) {
+          setTranscription(response.text.trim());
+        } else {
+          setTranscriptionError('音声から文字を検出できませんでした。無音か、音声が短すぎる可能性があります。');
+        }
+      } catch (error: any) {
+        console.error(`Transcription attempt ${retryCount + 1} failed:`, error);
+        
+        const isTransientError = error.message?.includes('500') || 
+                                error.message?.includes('Internal error') ||
+                                error.message?.includes('Service Unavailable') ||
+                                error.message?.includes('deadline');
+
+        if (isTransientError && retryCount < maxRetries) {
+          retryCount++;
+          const delay = Math.pow(2, retryCount) * 1000;
+          console.log(`Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return performTranscription();
+        }
+
+        let errorMessage = error.message || '不明なエラー';
+        if (errorMessage.includes('500')) {
+          errorMessage = 'サーバー側で一時的なエラーが発生しました。ファイルが大きすぎるか、形式が対応していない可能性があります。';
+        }
+        setTranscriptionError(`文字起こしに失敗しました: ${errorMessage}`);
+      } finally {
+        if (retryCount === maxRetries || !isTranscribing) {
+           setIsTranscribing(false);
+        }
+      }
+    };
+
+    await performTranscription();
   };
 
   const handleSave = async () => {
@@ -310,6 +378,40 @@ export default function Home() {
       }
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const downloadZip = async () => {
+    if (!audioBlob) return;
+    
+    try {
+      const zip = new JSZip();
+      
+      // Add audio file
+      const audioExtension = audioBlob.type.includes('webm') ? 'webm' : 'mp4';
+      zip.file(`audio.${audioExtension}`, audioBlob);
+      
+      // Add transcription file if it exists
+      if (transcription) {
+        zip.file('transcription.md', transcription);
+      }
+      
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      
+      // Create download link
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `voice2markdown_${new Date().getTime()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      setSaveStatus({ type: 'success', message: 'ZIPファイルをダウンロードしました' });
+    } catch (error: any) {
+      console.error('ZIP download error:', error);
+      setSaveStatus({ type: 'error', message: `ZIPの作成に失敗しました: ${error.message}` });
     }
   };
 
@@ -400,6 +502,26 @@ export default function Home() {
                   '準備完了'
                 )}
               </div>
+
+              {!isRecording && (
+                <div className="w-full pt-4 border-t border-zinc-100 flex flex-col items-center">
+                  <input
+                    type="file"
+                    accept="audio/*,video/*,.webm,.mp4,.m4a"
+                    className="hidden"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isTranscribing || isSaving}
+                    className="text-sm text-zinc-600 hover:text-zinc-900 flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4" />
+                    音声ファイルをアップロード
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Dictionary Card */}
@@ -496,17 +618,27 @@ export default function Home() {
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={handleSave}
-                  disabled={!transcription || isSaving || isTranscribing}
-                  className="w-full sm:w-auto px-6 py-3 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium cursor-pointer"
-                >
-                  {isSaving ? (
-                    <><Loader2 className="w-5 h-5 animate-spin" /> 保存中...</>
-                  ) : (
-                    <><Save className="w-5 h-5" /> クラウドへ保存</>
-                  )}
-                </button>
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={downloadZip}
+                    disabled={!audioBlob || isSaving || isTranscribing}
+                    className="flex-1 sm:flex-none px-4 py-3 bg-white text-zinc-700 border border-zinc-200 rounded-xl hover:bg-zinc-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium cursor-pointer"
+                    title="音声と文字起こしをZIPでダウンロード"
+                  >
+                    <Download className="w-5 h-5" /> ZIP保存
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={!transcription || isSaving || isTranscribing}
+                    className="flex-1 sm:flex-none px-6 py-3 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium cursor-pointer"
+                  >
+                    {isSaving ? (
+                      <><Loader2 className="w-5 h-5 animate-spin" /> 保存中...</>
+                    ) : (
+                      <><Save className="w-5 h-5" /> クラウドへ保存</>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
