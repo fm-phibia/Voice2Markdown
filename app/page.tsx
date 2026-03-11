@@ -5,18 +5,22 @@ import { Mic, Square, Loader2, Save, Book, Plus, Trash2, AlertCircle, CheckCircl
 import { GoogleGenAI } from '@google/genai';
 
 export default function Home() {
+  type DictionaryEntry = { word: string; context: string };
+
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [transcription, setTranscription] = useState('');
+  const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [isGoogleConnected, setIsGoogleConnected] = useState(false);
   const [isDropboxConnected, setIsDropboxConnected] = useState(false);
   
-  const [dictionary, setDictionary] = useState<string[]>([]);
+  const [dictionary, setDictionary] = useState<DictionaryEntry[]>([]);
   const [newWord, setNewWord] = useState('');
+  const [newContext, setNewContext] = useState('');
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -27,7 +31,16 @@ export default function Home() {
     const savedDict = localStorage.getItem('voice_dictionary');
     if (savedDict) {
       try {
-        setDictionary(JSON.parse(savedDict));
+        const parsed = JSON.parse(savedDict);
+        if (Array.isArray(parsed)) {
+          const migrated = parsed.map(item => {
+            if (typeof item === 'string') {
+              return { word: item, context: '' };
+            }
+            return item;
+          });
+          setDictionary(migrated);
+        }
       } catch (e) {}
     }
     
@@ -116,20 +129,21 @@ export default function Home() {
     }
   };
 
-  const saveDictionary = (newDict: string[]) => {
+  const saveDictionary = (newDict: DictionaryEntry[]) => {
     setDictionary(newDict);
     localStorage.setItem('voice_dictionary', JSON.stringify(newDict));
   };
 
   const addWord = () => {
-    if (newWord.trim() && !dictionary.includes(newWord.trim())) {
-      saveDictionary([...dictionary, newWord.trim()]);
+    if (newWord.trim() && !dictionary.some(d => d.word === newWord.trim())) {
+      saveDictionary([...dictionary, { word: newWord.trim(), context: newContext.trim() }]);
       setNewWord('');
+      setNewContext('');
     }
   };
 
   const removeWord = (word: string) => {
-    saveDictionary(dictionary.filter(w => w !== word));
+    saveDictionary(dictionary.filter(w => w.word !== word));
   };
 
   const requestWakeLock = async () => {
@@ -181,6 +195,7 @@ export default function Home() {
       setIsRecording(true);
       setRecordingTime(0);
       setTranscription('');
+      setTranscriptionError(null);
       setSaveStatus(null);
       
       timerRef.current = setInterval(() => {
@@ -213,7 +228,8 @@ export default function Home() {
           
           let systemInstruction = 'あなたはプロの文字起こしアシスタントです。提供された音声を正確に文字起こししてください。';
           if (dictionary.length > 0) {
-            systemInstruction += `\n以下の固有名詞や専門用語のリストを参考に、文脈に合わせて正しく変換・修正してください：\n${dictionary.join(', ')}`;
+            const dictString = dictionary.map(d => d.context ? `${d.word} (${d.context})` : d.word).join(', ');
+            systemInstruction += `\n以下の固有名詞や専門用語のリストを参考に、文脈に合わせて正しく変換・修正してください：\n${dictString}`;
           }
 
           const response = await ai.models.generateContent({
@@ -232,21 +248,21 @@ export default function Home() {
             }
           });
 
-          if (response.text) {
-            setTranscription(response.text);
+          if (response.text && response.text.trim().length > 0) {
+            setTranscription(response.text.trim());
           } else {
-            throw new Error('No transcription returned');
+            setTranscriptionError('音声から文字を検出できませんでした。');
           }
         } catch (error: any) {
           console.error('Transcription error:', error);
-          alert(`文字起こしに失敗しました: ${error.message}`);
+          setTranscriptionError(`文字起こしに失敗しました: ${error.message}`);
         } finally {
           setIsTranscribing(false);
         }
       };
     } catch (error: any) {
       console.error('Transcription error:', error);
-      alert(`文字起こしに失敗しました: ${error.message}`);
+      setTranscriptionError(`文字起こしに失敗しました: ${error.message}`);
       setIsTranscribing(false);
     }
   };
@@ -396,28 +412,39 @@ export default function Home() {
                 文字起こし時に優先して認識させたい固有名詞や専門用語を登録します。
               </p>
               
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2">
                 <input
                   type="text"
                   value={newWord}
                   onChange={(e) => setNewWord(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && addWord()}
-                  placeholder="単語を入力..."
-                  className="flex-1 px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                  placeholder="単語 (例: VJ)"
+                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
                 />
-                <button
-                  onClick={addWord}
-                  className="p-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
-                >
-                  <Plus className="w-5 h-5" />
-                </button>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newContext}
+                    onChange={(e) => setNewContext(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addWord()}
+                    placeholder="付帯情報 (例: ボイスジャーナル)"
+                    className="flex-1 px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                  />
+                  <button
+                    onClick={addWord}
+                    disabled={!newWord.trim()}
+                    className="p-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pt-2">
-                {dictionary.map(word => (
-                  <span key={word} className="inline-flex items-center gap-1 px-2 py-1 bg-zinc-100 text-zinc-700 text-xs rounded-md">
-                    {word}
-                    <button onClick={() => removeWord(word)} className="text-zinc-400 hover:text-red-500 cursor-pointer">
+                {dictionary.map(entry => (
+                  <span key={entry.word} className="inline-flex items-center gap-1 px-2 py-1 bg-zinc-100 text-zinc-700 text-xs rounded-md">
+                    <span className="font-medium">{entry.word}</span>
+                    {entry.context && <span className="text-zinc-500">({entry.context})</span>}
+                    <button onClick={() => removeWord(entry.word)} className="text-zinc-400 hover:text-red-500 cursor-pointer ml-1">
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </span>
@@ -433,7 +460,15 @@ export default function Home() {
           <div className="md:col-span-2 space-y-6">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-zinc-100 h-full flex flex-col space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="font-medium text-zinc-800">文字起こし結果</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-medium text-zinc-800">文字起こし結果</h2>
+                  {transcriptionError && (
+                    <span className="text-sm text-red-500 flex items-center gap-1">
+                      <AlertCircle className="w-4 h-4" />
+                      {transcriptionError}
+                    </span>
+                  )}
+                </div>
                 {isTranscribing && (
                   <div className="flex items-center gap-2 text-sm text-zinc-500">
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -442,13 +477,15 @@ export default function Home() {
                 )}
               </div>
 
-              <textarea
-                value={transcription}
-                onChange={(e) => setTranscription(e.target.value)}
-                placeholder="録音を停止すると、ここに文字起こし結果が表示されます。"
-                className="flex-1 w-full p-4 bg-zinc-50 border border-zinc-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-zinc-900 min-h-[300px]"
-                disabled={isTranscribing}
-              />
+              {!transcriptionError && (
+                <textarea
+                  value={transcription}
+                  onChange={(e) => setTranscription(e.target.value)}
+                  placeholder="録音を停止すると、ここに文字起こし結果が表示されます。"
+                  className="flex-1 w-full p-4 bg-zinc-50 border border-zinc-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-zinc-900 min-h-[300px]"
+                  disabled={isTranscribing}
+                />
+              )}
 
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-zinc-100">
                 <div className="flex-1">

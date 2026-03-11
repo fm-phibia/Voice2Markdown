@@ -21,7 +21,16 @@ export async function POST(req: NextRequest) {
     }
 
     const date = new Date();
-    const filenameBase = `VoiceMemo_${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2, '0')}${date.getDate().toString().padStart(2, '0')}_${date.getHours().toString().padStart(2, '0')}${date.getMinutes().toString().padStart(2, '0')}`;
+    // JSTに変換 (UTC+9)
+    const jstDate = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+    const yyyy = jstDate.getUTCFullYear();
+    const mm = String(jstDate.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(jstDate.getUTCDate()).padStart(2, '0');
+    const hh = String(jstDate.getUTCHours()).padStart(2, '0');
+    const min = String(jstDate.getUTCMinutes()).padStart(2, '0');
+    const ss = String(jstDate.getUTCSeconds()).padStart(2, '0');
+
+    const filenameBase = `vj-${yyyy}${mm}${dd}${hh}${min}${ss}`;
     
     const audioFilename = `${filenameBase}.webm`;
     const mdFilename = filenameBase;
@@ -43,7 +52,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Format Markdown
-    const markdownContent = `# Voice Memo: ${date.toLocaleString()}\n\n## Transcription\n\n${transcription}\n\n---\n*Audio saved to Google Drive: ${audioFilename}*`;
+    const markdownContent = `## ${yyyy}年${mm}月${dd}日${hh}:${min}頃のボイスジャーナル\n${transcription}\n[[${yyyy}-${mm}-${dd}]]`;
 
     // Upload to Dropbox
     let dropboxResult = null;
