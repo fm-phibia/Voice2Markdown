@@ -1,0 +1,8 @@
+{
+  "name": "Voice2Markdown",
+  "description": "Record audio, transcribe with Gemini, and save to Google Drive and Dropbox (Obsidian).",
+  "requestFramePermissions": [
+    "microphone",
+    "screen-wake-lock"
+  ]
+}
