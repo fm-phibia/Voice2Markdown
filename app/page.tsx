@@ -226,7 +226,7 @@ export default function Home() {
           
           const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
           
-          let systemInstruction = 'あなたはプロの文字起こしアシスタントです。提供された音声を正確に文字起こししてください。';
+          let systemInstruction = 'あなたはプロの文字起こしアシスタントです。提供された音声を正確に文字起こししてください。\n重要: 出力は文字起こししたテキストのみとし、挨拶や「文字起こししました」などの前置き、後書き、説明は一切含めないでください。';
           if (dictionary.length > 0) {
             const dictString = dictionary.map(d => d.context ? `${d.word} (${d.context})` : d.word).join(', ');
             systemInstruction += `\n以下の固有名詞や専門用語のリストを参考に、文脈に合わせて正しく変換・修正してください：\n${dictString}`;
@@ -241,7 +241,7 @@ export default function Home() {
                   mimeType: blob.type || 'audio/webm',
                 }
               },
-              'この音声を文字起こししてください。'
+              '音声の文字起こしのみを出力してください。'
             ],
             config: {
               systemInstruction,
