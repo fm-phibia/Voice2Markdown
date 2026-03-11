@@ -50,8 +50,12 @@ export async function POST(req: NextRequest) {
     try {
       dropboxResult = await saveToDropbox(mdFilename, markdownContent, validDropboxToken);
     } catch (e: any) {
-      console.warn('Failed to save to Dropbox:', e.message);
-      throw new Error(`Dropbox Error: ${e.message}`);
+      console.warn('Failed to save to Dropbox:', e.message || e);
+      const errorMessage = e?.error?.error_summary || e.message || String(e);
+      if (errorMessage.includes('401') || errorMessage.includes('expired') || errorMessage.includes('invalid_access_token')) {
+        throw new Error('Dropboxの認証が切れました。再度「Dropbox に接続」ボタンから連携してください。');
+      }
+      throw new Error(`Dropbox Error: ${errorMessage}`);
     }
 
     return NextResponse.json({ 

@@ -52,8 +52,11 @@ export async function saveToDropbox(filename: string, content: string, accessTok
       mode: { '.tag': 'overwrite' }
     });
     return response;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Dropbox upload error:', error);
+    if (error?.status === 401) {
+      throw new Error('Response failed with a 401 code');
+    }
     throw error;
   }
 }

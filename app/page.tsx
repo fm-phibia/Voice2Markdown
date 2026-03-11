@@ -252,11 +252,19 @@ export default function Home() {
         body: formData,
       });
 
-      const data = await response.json();
+      let data;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        throw new Error(`サーバーエラーが発生しました (ステータス: ${response.status})`);
+      }
+
       if (response.ok) {
         setSaveStatus({ type: 'success', message: data.message || '保存しました！' });
       } else {
-        throw new Error(data.error);
+        throw new Error(data.error || '保存に失敗しました');
       }
     } catch (error: any) {
       console.error('Save error:', error);
