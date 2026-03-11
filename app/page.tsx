@@ -53,8 +53,11 @@ export default function Home() {
   const checkGoogleStatus = async () => {
     try {
       const res = await fetch('/api/auth/google/status');
-      const data = await res.json();
-      setIsGoogleConnected(data.connected);
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await res.json();
+        setIsGoogleConnected(data.connected);
+      }
     } catch (e) {
       console.error('Failed to check Google status', e);
     }
@@ -63,8 +66,11 @@ export default function Home() {
   const checkDropboxStatus = async () => {
     try {
       const res = await fetch('/api/auth/dropbox/status');
-      const data = await res.json();
-      setIsDropboxConnected(data.connected);
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await res.json();
+        setIsDropboxConnected(data.connected);
+      }
     } catch (e) {
       console.error('Failed to check Dropbox status', e);
     }
@@ -74,15 +80,19 @@ export default function Home() {
     try {
       const response = await fetch('/api/auth/google/url');
       if (!response.ok) throw new Error('Failed to get auth URL');
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('サーバーが準備中です。しばらく待ってから再度お試しください。');
+      }
       const { url } = await response.json();
       
       const authWindow = window.open(url, 'oauth_popup', 'width=600,height=700');
       if (!authWindow) {
         alert('ポップアップがブロックされました。ポップアップを許可してください。');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('OAuth error:', error);
-      alert('Google Driveへの接続に失敗しました。');
+      alert(error.message || 'Google Driveへの接続に失敗しました。');
     }
   };
 
@@ -90,15 +100,19 @@ export default function Home() {
     try {
       const response = await fetch('/api/auth/dropbox/url');
       if (!response.ok) throw new Error('Failed to get auth URL');
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('サーバーが準備中です。しばらく待ってから再度お試しください。');
+      }
       const { url } = await response.json();
       
       const authWindow = window.open(url, 'oauth_popup', 'width=600,height=700');
       if (!authWindow) {
         alert('ポップアップがブロックされました。ポップアップを許可してください。');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('OAuth error:', error);
-      alert('Dropboxへの接続に失敗しました。');
+      alert(error.message || 'Dropboxへの接続に失敗しました。');
     }
   };
 
@@ -258,7 +272,8 @@ export default function Home() {
         data = await response.json();
       } else {
         const text = await response.text();
-        throw new Error(`サーバーエラーが発生しました (ステータス: ${response.status})`);
+        console.error('Non-JSON response:', text.substring(0, 200));
+        throw new Error('サーバーが準備中です。数秒待ってから再度お試しください。');
       }
 
       if (response.ok) {
@@ -268,7 +283,15 @@ export default function Home() {
       }
     } catch (error: any) {
       console.error('Save error:', error);
-      setSaveStatus({ type: 'error', message: `保存に失敗しました: ${error.message}` });
+      const errorMessage = error.message;
+      setSaveStatus({ type: 'error', message: `保存に失敗しました: ${errorMessage}` });
+      
+      if (errorMessage.includes('Dropboxの認証が切れました') || errorMessage.includes('Dropbox Error: 401')) {
+        setIsDropboxConnected(false);
+      }
+      if (errorMessage.includes('Google Driveの認証が切れました') || errorMessage.includes('Google Drive Error: 401')) {
+        setIsGoogleConnected(false);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -289,10 +312,14 @@ export default function Home() {
           
           <div className="flex justify-center items-center gap-4 mt-4 flex-wrap">
             {isGoogleConnected ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-sm font-medium border border-emerald-200">
+              <button
+                onClick={connectGoogleDrive}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-medium border border-emerald-200 transition-colors cursor-pointer"
+                title="Google Drive に再接続する"
+              >
                 <CheckCircle2 className="w-4 h-4" />
                 Google Drive 接続済み
-              </span>
+              </button>
             ) : (
               <button
                 onClick={connectGoogleDrive}
@@ -304,10 +331,14 @@ export default function Home() {
             )}
 
             {isDropboxConnected ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-sm font-medium border border-emerald-200">
+              <button
+                onClick={connectDropbox}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-medium border border-emerald-200 transition-colors cursor-pointer"
+                title="Dropbox に再接続する"
+              >
                 <CheckCircle2 className="w-4 h-4" />
                 Dropbox 接続済み
-              </span>
+              </button>
             ) : (
               <button
                 onClick={connectDropbox}
