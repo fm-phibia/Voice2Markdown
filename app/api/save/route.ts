@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { saveToDropbox } from '@/lib/dropbox';
+import { saveToDropbox, getValidDropboxToken } from '@/lib/dropbox';
 import { saveToGoogleDrive } from '@/lib/gdrive';
 
 export async function POST(req: NextRequest) {
   try {
     const cookieStore = await cookies();
     const googleAccessToken = cookieStore.get('google_access_token')?.value;
+    const dropboxAccessToken = cookieStore.get('dropbox_access_token')?.value;
+    const dropboxRefreshToken = cookieStore.get('dropbox_refresh_token')?.value;
+
+    const validDropboxToken = await getValidDropboxToken(dropboxAccessToken, dropboxRefreshToken);
 
     const formData = await req.formData();
     const audioFile = formData.get('audio') as File;
@@ -44,7 +48,7 @@ export async function POST(req: NextRequest) {
     // Upload to Dropbox
     let dropboxResult = null;
     try {
-      dropboxResult = await saveToDropbox(mdFilename, markdownContent);
+      dropboxResult = await saveToDropbox(mdFilename, markdownContent, validDropboxToken);
     } catch (e: any) {
       console.warn('Failed to save to Dropbox:', e.message);
       throw new Error(`Dropbox Error: ${e.message}`);

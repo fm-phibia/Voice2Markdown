@@ -15,12 +15,19 @@ export async function saveToGoogleDrive(filename: string, audioBuffer: Buffer, m
   stream.push(audioBuffer);
   stream.push(null);
 
+  const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+  const requestBody: any = {
+    name: filename,
+    mimeType: mimeType,
+  };
+
+  if (folderId) {
+    requestBody.parents = [folderId];
+  }
+
   try {
     const response = await drive.files.create({
-      requestBody: {
-        name: filename,
-        mimeType: mimeType,
-      },
+      requestBody,
       media: {
         mimeType: mimeType,
         body: stream,
