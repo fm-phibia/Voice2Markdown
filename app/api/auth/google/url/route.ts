@@ -6,8 +6,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'GOOGLE_CLIENT_ID is not set' }, { status: 500 });
   }
 
-  const origin = req.nextUrl.origin;
-  const redirectUri = `${origin}/api/auth/google/callback`;
+  const origin = process.env.APP_URL || req.nextUrl.origin;
+  const baseUrl = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+  const redirectUri = `${baseUrl}/api/auth/google/callback`;
 
   const params = new URLSearchParams({
     client_id: clientId,

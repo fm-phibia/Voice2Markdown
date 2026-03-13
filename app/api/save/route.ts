@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const audioFile = formData.get('audio') as File;
     const transcription = formData.get('transcription') as string;
+    const skipGoogleDrive = formData.get('skipGoogleDrive') === 'true';
     
     if (!audioFile || !transcription) {
       return NextResponse.json({ error: 'Missing audio or transcription' }, { status: 400 });
@@ -40,13 +41,15 @@ export async function POST(req: NextRequest) {
 
     // Upload to Google Drive
     let driveResult = null;
-    if (googleAccessToken) {
+    if (googleAccessToken && !skipGoogleDrive) {
       try {
         driveResult = await saveToGoogleDrive(audioFilename, buffer, audioFile.type || 'audio/webm', googleAccessToken);
       } catch (e: any) {
         console.warn('Failed to save to Google Drive:', e.message);
         throw new Error(`Google Drive Error: ${e.message}`);
       }
+    } else if (skipGoogleDrive) {
+      console.log('Skipping Google Drive upload as requested.');
     } else {
       console.warn('Google Drive access token not found. Skipping Google Drive upload.');
     }
@@ -71,7 +74,7 @@ export async function POST(req: NextRequest) {
       success: true, 
       driveResult, 
       dropboxResult,
-      message: googleAccessToken ? 'Saved to Google Drive and Dropbox' : 'Saved to Dropbox only (Google Drive not connected)'
+      message: (googleAccessToken && !skipGoogleDrive) ? 'Google DriveとDropboxに保存しました' : 'Dropboxにノートのみ保存しました'
     });
   } catch (error: any) {
     console.error('Save error:', error);

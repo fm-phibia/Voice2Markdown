@@ -21,8 +21,9 @@ export async function GET(req: NextRequest) {
     return new NextResponse('Google OAuth credentials not configured', { status: 500 });
   }
 
-  const origin = req.nextUrl.origin;
-  const redirectUri = `${origin}/api/auth/google/callback`;
+  const origin = process.env.APP_URL || req.nextUrl.origin;
+  const baseUrl = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+  const redirectUri = `${baseUrl}/api/auth/google/callback`;
 
   try {
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {

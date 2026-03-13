@@ -335,7 +335,7 @@ export default function Home() {
     await performTranscription();
   };
 
-  const handleSave = async () => {
+  const handleSave = async (skipGoogleDrive: boolean = false) => {
     if (!audioBlob || !transcription) return;
     
     setIsSaving(true);
@@ -344,6 +344,9 @@ export default function Home() {
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
       formData.append('transcription', transcription);
+      if (skipGoogleDrive) {
+        formData.append('skipGoogleDrive', 'true');
+      }
 
       const response = await fetch('/api/save', {
         method: 'POST',
@@ -618,7 +621,7 @@ export default function Home() {
                     </div>
                   )}
                 </div>
-                <div className="flex gap-2 w-full sm:w-auto">
+                <div className="flex gap-2 w-full sm:w-auto flex-wrap sm:flex-nowrap">
                   <button
                     onClick={downloadZip}
                     disabled={!audioBlob || isSaving || isTranscribing}
@@ -628,7 +631,19 @@ export default function Home() {
                     <Download className="w-5 h-5" /> ZIP保存
                   </button>
                   <button
-                    onClick={handleSave}
+                    onClick={() => handleSave(true)}
+                    disabled={!transcription || isSaving || isTranscribing}
+                    className="flex-1 sm:flex-none px-4 py-3 bg-white text-zinc-700 border border-zinc-200 rounded-xl hover:bg-zinc-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium cursor-pointer"
+                    title="Dropboxにマークダウンのみを保存します（Google Driveには保存しません）"
+                  >
+                    {isSaving ? (
+                      <><Loader2 className="w-5 h-5 animate-spin" /> 保存中...</>
+                    ) : (
+                      <><Save className="w-5 h-5" /> ノートのみ保存</>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleSave(false)}
                     disabled={!transcription || isSaving || isTranscribing}
                     className="flex-1 sm:flex-none px-6 py-3 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium cursor-pointer"
                   >
