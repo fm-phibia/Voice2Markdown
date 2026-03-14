@@ -27,7 +27,20 @@ export default function Home() {
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const wakeLockRef = useRef<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const silentSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (isRecording && document.visibilityState === 'visible') {
+        await requestWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isRecording]);
 
   useEffect(() => {
     const savedDict = localStorage.getItem('voice_dictionary');
@@ -161,8 +174,48 @@ export default function Home() {
 
   const releaseWakeLock = () => {
     if (wakeLockRef.current) {
-      wakeLockRef.current.release();
+      try {
+        wakeLockRef.current.release();
+      } catch (e) {}
       wakeLockRef.current = null;
+    }
+  };
+
+  const startSilentAudio = () => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        audioContextRef.current = new AudioContextClass();
+      }
+      
+      const ctx = audioContextRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.loop = true;
+      source.start();
+      silentSourceRef.current = source;
+    } catch (e) {
+      console.warn('Silent audio could not be started:', e);
+    }
+  };
+
+  const stopSilentAudio = () => {
+    if (silentSourceRef.current) {
+      try {
+        silentSourceRef.current.stop();
+      } catch (e) {}
+      silentSourceRef.current = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.suspend();
     }
   };
 
@@ -184,6 +237,7 @@ export default function Home() {
         setAudioBlob(blob);
         stream.getTracks().forEach(track => track.stop());
         releaseWakeLock();
+        stopSilentAudio();
         if (timerRef.current) {
           clearInterval(timerRef.current);
         }
@@ -193,6 +247,7 @@ export default function Home() {
       };
 
       await requestWakeLock();
+      startSilentAudio();
       mediaRecorder.start(1000); // collect data every second
       setIsRecording(true);
       setRecordingTime(0);
@@ -498,9 +553,18 @@ export default function Home() {
                 </button>
               )}
               
-              <div className="text-sm text-zinc-500 flex items-center gap-2">
+              <div className="text-sm text-zinc-500 flex flex-col items-center gap-2">
                 {isRecording ? (
-                  <><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> 録音中</>
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                      <span>録音中</span>
+                    </div>
+                    <p className="text-[10px] text-zinc-400 text-center">
+                      スリープ防止機能を有効にしています。<br />
+                      長時間録音時は画面をオンのままにすることをお勧めします。
+                    </p>
+                  </>
                 ) : (
                   '準備完了'
                 )}
