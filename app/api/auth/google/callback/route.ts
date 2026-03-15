@@ -49,6 +49,46 @@ export async function GET(req: NextRequest) {
 
     const { access_token, refresh_token, expires_in } = tokenData;
 
+    // Fetch user info to get email
+    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: {
+        Authorization: `Bearer ${access_token}`,
+      },
+    });
+
+    if (!userInfoResponse.ok) {
+      const errorText = await userInfoResponse.text();
+      console.error('Failed to fetch user info:', errorText);
+      return new NextResponse(`Failed to fetch user info: ${errorText}`, { status: 500 });
+    }
+
+    const userInfo = await userInfoResponse.json();
+    const userEmail = userInfo.email;
+
+    // Check ALLOWED_EMAILS
+    const allowedEmailsStr = process.env.ALLOWED_EMAILS;
+    if (allowedEmailsStr && allowedEmailsStr.trim() !== '') {
+      const allowedEmails = allowedEmailsStr.split(',').map(e => e.trim().toLowerCase());
+      if (!allowedEmails.includes(userEmail.toLowerCase())) {
+        const html = `
+          <html>
+            <body>
+              <script>
+                if (window.opener) {
+                  window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', provider: 'google', message: 'このアカウントは許可されていません。' }, '*');
+                  window.close();
+                } else {
+                  window.location.href = '/?error=not_allowed';
+                }
+              </script>
+              <p>Authentication failed: Email not allowed. This window should close automatically.</p>
+            </body>
+          </html>
+        `;
+        return new NextResponse(html, { headers: { 'Content-Type': 'text/html' } });
+      }
+    }
+
     // Store tokens in cookies
     const cookieStore = await cookies();
     cookieStore.set('google_access_token', access_token, {
@@ -69,6 +109,14 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    cookieStore.set('user_email', userEmail, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      path: '/',
+    });
+
     // Send success message to parent window and close popup
     const html = `
       <html>
@@ -78,7 +126,7 @@ export async function GET(req: NextRequest) {
               window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', provider: 'google' }, '*');
               window.close();
             } else {
-              window.location.href = '/';
+              window.location.href = '/recorder';
             }
           </script>
           <p>Authentication successful. This window should close automatically.</p>
