@@ -20,7 +20,7 @@ export default function Recorder() {
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [isGoogleConnected, setIsGoogleConnected] = useState(false);
   const [isDropboxConnected, setIsDropboxConnected] = useState(false);
-  
+
   const [dictionary, setDictionary] = useState<DictionaryEntry[]>([]);
   const [newWord, setNewWord] = useState('');
   const [newContext, setNewContext] = useState('');
@@ -76,9 +76,9 @@ export default function Recorder() {
           });
           setDictionary(migrated);
         }
-      } catch (e) {}
+      } catch (e) { }
     }
-    
+
     checkGoogleStatus();
     checkDropboxStatus();
 
@@ -133,7 +133,7 @@ export default function Recorder() {
         throw new Error('サーバーが準備中です。しばらく待ってから再度お試しください。');
       }
       const { url } = await response.json();
-      
+
       const authWindow = window.open(url, 'oauth_popup', 'width=600,height=700');
       if (!authWindow) {
         alert('ポップアップがブロックされました。ポップアップを許可してください。');
@@ -153,7 +153,7 @@ export default function Recorder() {
         throw new Error('サーバーが準備中です。しばらく待ってから再度お試しください。');
       }
       const { url } = await response.json();
-      
+
       const authWindow = window.open(url, 'oauth_popup', 'width=600,height=700');
       if (!authWindow) {
         alert('ポップアップがブロックされました。ポップアップを許可してください。');
@@ -196,7 +196,7 @@ export default function Recorder() {
     if (wakeLockRef.current) {
       try {
         wakeLockRef.current.release();
-      } catch (e) {}
+      } catch (e) { }
       wakeLockRef.current = null;
     }
   };
@@ -205,16 +205,16 @@ export default function Recorder() {
     try {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContextClass) return;
-      
+
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
         audioContextRef.current = new AudioContextClass();
       }
-      
+
       const ctx = audioContextRef.current;
       if (ctx.state === 'suspended') {
         ctx.resume();
       }
-      
+
       const buffer = ctx.createBuffer(1, 1, 22050);
       const source = ctx.createBufferSource();
       source.buffer = buffer;
@@ -231,7 +231,7 @@ export default function Recorder() {
     if (silentSourceRef.current) {
       try {
         silentSourceRef.current.stop();
-      } catch (e) {}
+      } catch (e) { }
       silentSourceRef.current = null;
     }
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
@@ -261,7 +261,7 @@ export default function Recorder() {
         if (timerRef.current) {
           clearInterval(timerRef.current);
         }
-        
+
         // Auto transcribe
         await transcribeAudio(blob);
       };
@@ -274,7 +274,7 @@ export default function Recorder() {
       setTranscription('');
       setTranscriptionError(null);
       setSaveStatus(null);
-      
+
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
@@ -295,15 +295,15 @@ export default function Recorder() {
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    
+
     setAudioBlob(file);
     setTranscription('');
     setTranscriptionError(null);
     setSaveStatus(null);
     setRecordingTime(0);
-    
+
     transcribeAudio(file);
-    
+
     // Reset input value so the same file can be uploaded again if needed
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -313,7 +313,7 @@ export default function Recorder() {
   const transcribeAudio = async (blob: Blob) => {
     setIsTranscribing(true);
     setTranscriptionError(null);
-    
+
     // Check file size (Gemini inlineData limit is roughly 20MB)
     if (blob.size > 20 * 1024 * 1024) {
       setTranscriptionError('ファイルサイズが大きすぎます（20MB以下にしてください）。長い録音の場合は、分割してアップロードするか、録音時間を短くしてください。');
@@ -342,11 +342,11 @@ export default function Recorder() {
 
         const base64data = await base64Promise;
         const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
-        
+
         // Clean MIME type (remove codecs like ;codecs=opus which can cause 500 errors)
         let mimeType = blob.type || 'audio/webm';
         mimeType = mimeType.split(';')[0];
-        
+
         // If it's a generic video/webm but we want audio, audio/webm is often safer for transcription
         if (mimeType === 'video/webm') {
           mimeType = 'audio/webm';
@@ -355,7 +355,7 @@ export default function Recorder() {
         let systemInstruction = 'あなたは非常に精密な文字起こしアシスタントです。提供された音声を**聞こえた通りに、一言一句正確に**文字起こししてください。\n' +
           '推測で文章を補完したり、聞こえない部分を勝手に創作したりしないでください。文脈的に不自然であっても、実際に発話された内容を優先してください。\n' +
           '重要: 出力は文字起こししたテキストのみとし、挨拶や説明は一切含めないでください。';
-        
+
         if (dictionary.length > 0) {
           const dictString = dictionary.map(d => d.context ? `${d.word} (${d.context})` : d.word).join(', ');
           systemInstruction += `\n以下の固有名詞や専門用語のリストを参考に、文脈に合わせて正しく変換・修正してください：\n${dictString}`;
@@ -385,11 +385,11 @@ export default function Recorder() {
         }
       } catch (error: any) {
         console.error(`Transcription attempt ${retryCount + 1} failed:`, error);
-        
-        const isTransientError = error.message?.includes('500') || 
-                                error.message?.includes('Internal error') ||
-                                error.message?.includes('Service Unavailable') ||
-                                error.message?.includes('deadline');
+
+        const isTransientError = error.message?.includes('500') ||
+          error.message?.includes('Internal error') ||
+          error.message?.includes('Service Unavailable') ||
+          error.message?.includes('deadline');
 
         if (isTransientError && retryCount < maxRetries) {
           retryCount++;
@@ -406,7 +406,7 @@ export default function Recorder() {
         setTranscriptionError(`文字起こしに失敗しました: ${errorMessage}`);
       } finally {
         if (retryCount === maxRetries || !isTranscribing) {
-           setIsTranscribing(false);
+          setIsTranscribing(false);
         }
       }
     };
@@ -416,7 +416,7 @@ export default function Recorder() {
 
   const handleSave = async (skipGoogleDrive: boolean = false) => {
     if (!audioBlob || !transcription) return;
-    
+
     setIsSaving(true);
     setSaveStatus(null);
     try {
@@ -451,7 +451,7 @@ export default function Recorder() {
       console.error('Save error:', error);
       const errorMessage = error.message;
       setSaveStatus({ type: 'error', message: `保存に失敗しました: ${errorMessage}` });
-      
+
       if (errorMessage.includes('Dropboxの認証が切れました') || errorMessage.includes('Dropbox Error: 401')) {
         setIsDropboxConnected(false);
       }
@@ -465,21 +465,21 @@ export default function Recorder() {
 
   const downloadZip = async () => {
     if (!audioBlob) return;
-    
+
     try {
       const zip = new JSZip();
-      
+
       // Add audio file
       const audioExtension = audioBlob.type.includes('webm') ? 'webm' : 'mp4';
       zip.file(`audio.${audioExtension}`, audioBlob);
-      
+
       // Add transcription file if it exists
       if (transcription) {
         zip.file('transcription.md', transcription);
       }
-      
+
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      
+
       // Create download link
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
@@ -489,7 +489,7 @@ export default function Recorder() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
+
       setSaveStatus({ type: 'success', message: 'ZIPファイルをダウンロードしました' });
     } catch (error: any) {
       console.error('ZIP download error:', error);
@@ -509,7 +509,7 @@ export default function Recorder() {
         <header className="text-center space-y-2">
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Voice2Markdown</h1>
           <p className="text-zinc-500">録音・文字起こし・クラウド保存</p>
-          
+
           <div className="flex justify-center items-center gap-4 mt-4 flex-wrap">
             {isGoogleConnected ? (
               <button
@@ -559,7 +559,7 @@ export default function Recorder() {
               <div className="text-4xl font-mono font-light tracking-wider text-zinc-800">
                 {formatTime(recordingTime)}
               </div>
-              
+
               {isRecording ? (
                 <button
                   onClick={stopRecording}
@@ -576,7 +576,7 @@ export default function Recorder() {
                   <Mic className="w-8 h-8" />
                 </button>
               )}
-              
+
               <div className="text-sm text-zinc-500 flex flex-col items-center gap-2">
                 {isRecording ? (
                   <>
@@ -624,7 +624,7 @@ export default function Recorder() {
               <p className="text-xs text-zinc-500">
                 文字起こし時に優先して認識させたい固有名詞や専門用語を登録します。
               </p>
-              
+
               <div className="flex flex-col gap-2">
                 <input
                   type="text"
