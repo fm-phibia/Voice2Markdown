@@ -68,16 +68,48 @@ cp .env.example .env.local
 
 ### 5. アプリの起動
 
-#### 開発モード
+#### 開発モード（ローカル）
 ```bash
 npm run dev
 ```
 
-#### 本番モード
+#### 本番モード（ローカル）
 ```bash
 npm run build
 npm run start
 ```
+
+#### Docker を使った起動
+
+##### 前提条件
+- Docker と Docker Compose がインストールされていること
+- `.env` ファイルに環境変数が設定されていること
+
+##### 本番環境で起動
+```bash
+# イメージをビルドして起動
+docker compose up -d --build app
+
+# ログを確認
+docker compose logs -f app
+
+# 停止
+docker compose down
+```
+
+##### 開発環境で起動
+```bash
+# 開発モードで起動（ホットリロード有効）
+docker compose --profile dev up dev
+
+# 停止
+docker compose --profile dev down
+```
+
+**注意事項:**
+- Docker環境では `.env` ファイルから環境変数が自動的に読み込まれます
+- 本番環境はポート `3000` で起動します
+- 開発環境ではソースコードの変更がリアルタイムに反映されます
 
 ## ライセンス
 

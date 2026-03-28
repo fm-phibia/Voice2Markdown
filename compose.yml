@@ -1,0 +1,45 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # ビルド時に必要な環境変数（NEXT_PUBLIC_*）
+        NEXT_PUBLIC_GEMINI_API_KEY: ${NEXT_PUBLIC_GEMINI_API_KEY}
+    container_name: voice2markdown
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      # 本番環境を明示的に設定
+      - NODE_ENV=production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 開発環境用のサービス（オプション）
+  dev:
+    image: node:24-alpine
+    container_name: voice2markdown-dev
+    working_dir: /app
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      # 開発環境を明示的に設定
+      - NODE_ENV=development
+    command: sh -c "npm install && npm run dev"
+    stdin_open: true
+    tty: true
+    profiles:
+      - dev
