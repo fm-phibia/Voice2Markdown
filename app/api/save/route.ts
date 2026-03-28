@@ -10,8 +10,6 @@ export async function POST(req: NextRequest) {
     const dropboxAccessToken = cookieStore.get('dropbox_access_token')?.value;
     const dropboxRefreshToken = cookieStore.get('dropbox_refresh_token')?.value;
 
-    const validDropboxToken = await getValidDropboxToken(dropboxAccessToken, dropboxRefreshToken);
-
     const formData = await req.formData();
     const audioFile = formData.get('audio') as File;
     const transcription = formData.get('transcription') as string;
@@ -57,15 +55,48 @@ export async function POST(req: NextRequest) {
     // Format Markdown
     const markdownContent = `## ${yyyy}年${mm}月${dd}日${hh}:${min}頃のボイスジャーナル\n${transcription}\n[[${yyyy}-${mm}-${dd}]]`;
 
-    // Upload to Dropbox
+    // Upload to Dropbox with retry logic
     let dropboxResult = null;
-    try {
-      dropboxResult = await saveToDropbox(mdFilename, markdownContent, validDropboxToken);
-    } catch (e: any) {
-      console.warn('Failed to save to Dropbox:', e.message || e);
-      const errorMessage = e?.error?.error_summary || e.message || String(e);
+    const maxRetries = 3;
+    let lastError: any = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Try to get a fresh token on each attempt
+        const freshToken = await getValidDropboxToken(dropboxAccessToken, dropboxRefreshToken);
+        dropboxResult = await saveToDropbox(mdFilename, markdownContent, freshToken);
+        lastError = null;
+        break; // Success, exit retry loop
+      } catch (e: any) {
+        lastError = e;
+        console.warn(`Dropbox save attempt ${attempt}/${maxRetries} failed:`, e.message || e);
+
+        const errorMessage = e?.error?.error_summary || e.message || String(e);
+        const isAuthError = errorMessage.includes('401') ||
+                          errorMessage.includes('expired') ||
+                          errorMessage.includes('invalid_access_token') ||
+                          errorMessage.includes('access token is missing');
+
+        // If it's not an auth error or we don't have refresh token, don't retry
+        if (!isAuthError || !dropboxRefreshToken) {
+          break;
+        }
+
+        // Wait before retrying (exponential backoff)
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 500));
+        }
+      }
+    }
+
+    // If all retries failed, throw the error
+    if (lastError) {
+      const errorMessage = lastError?.error?.error_summary || lastError.message || String(lastError);
       if (errorMessage.includes('401') || errorMessage.includes('expired') || errorMessage.includes('invalid_access_token')) {
         throw new Error('Dropboxの認証が切れました。再度「Dropbox に接続」ボタンから連携してください。');
+      }
+      if (errorMessage.includes('access token is missing')) {
+        throw new Error('Dropbox access token is missing');
       }
       throw new Error(`Dropbox Error: ${errorMessage}`);
     }
