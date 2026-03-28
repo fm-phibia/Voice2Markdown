@@ -51,20 +51,22 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await tokenResponse.json();
-    
+
     const cookieStore = await cookies();
+    const isProduction = process.env.NODE_ENV === 'production';
+
     cookieStore.set('dropbox_access_token', data.access_token, {
       httpOnly: true,
-      secure: true,
-      sameSite: 'none',
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
       maxAge: data.expires_in || 14400, // Default 4 hours
     });
 
     if (data.refresh_token) {
       cookieStore.set('dropbox_refresh_token', data.refresh_token, {
         httpOnly: true,
-        secure: true,
-        sameSite: 'none',
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
         maxAge: 60 * 60 * 24 * 365, // 1 year
       });
     }

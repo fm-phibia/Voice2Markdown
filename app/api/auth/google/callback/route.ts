@@ -91,10 +91,12 @@ export async function GET(req: NextRequest) {
 
     // Store tokens in cookies
     const cookieStore = await cookies();
+    const isProduction = process.env.NODE_ENV === 'production';
+
     cookieStore.set('google_access_token', access_token, {
       httpOnly: true,
-      secure: true,
-      sameSite: 'none',
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
       maxAge: expires_in || 3600,
       path: '/',
     });
@@ -102,8 +104,8 @@ export async function GET(req: NextRequest) {
     if (refresh_token) {
       cookieStore.set('google_refresh_token', refresh_token, {
         httpOnly: true,
-        secure: true,
-        sameSite: 'none',
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
         maxAge: 30 * 24 * 60 * 60, // 30 days
         path: '/',
       });
@@ -111,8 +113,8 @@ export async function GET(req: NextRequest) {
 
     cookieStore.set('user_email', userEmail, {
       httpOnly: true,
-      secure: true,
-      sameSite: 'none',
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
       maxAge: 30 * 24 * 60 * 60, // 30 days
       path: '/',
     });
