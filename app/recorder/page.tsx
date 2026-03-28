@@ -362,7 +362,7 @@ export default function Recorder() {
         }
 
         const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
+          model: 'gemini-2.5-flash',
           contents: [
             {
               inlineData: {
@@ -469,13 +469,27 @@ export default function Recorder() {
     try {
       const zip = new JSZip();
 
+      // Generate filename based on current date
+      const date = new Date();
+      // JSTに変換 (UTC+9)
+      const jstDate = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+      const yyyy = jstDate.getUTCFullYear();
+      const mm = String(jstDate.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(jstDate.getUTCDate()).padStart(2, '0');
+      const hh = String(jstDate.getUTCHours()).padStart(2, '0');
+      const min = String(jstDate.getUTCMinutes()).padStart(2, '0');
+      const ss = String(jstDate.getUTCSeconds()).padStart(2, '0');
+
+      const filenameBase = `vj-${yyyy}${mm}${dd}${hh}${min}${ss}`;
+
       // Add audio file
       const audioExtension = audioBlob.type.includes('webm') ? 'webm' : 'mp4';
-      zip.file(`audio.${audioExtension}`, audioBlob);
+      zip.file(`${filenameBase}.${audioExtension}`, audioBlob);
 
       // Add transcription file if it exists
       if (transcription) {
-        zip.file('transcription.md', transcription);
+        const markdownContent = `## ${yyyy}年${mm}月${dd}日${hh}:${min}頃のボイスジャーナル\n${transcription}\n[[${yyyy}-${mm}-${dd}]]`;
+        zip.file(`${filenameBase}.md`, markdownContent);
       }
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
@@ -484,7 +498,7 @@ export default function Recorder() {
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `voice2markdown_${new Date().getTime()}.zip`;
+      a.download = `${filenameBase}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
